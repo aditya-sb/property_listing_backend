@@ -1,144 +1,129 @@
-var express = require('express');
-var router = express.Router();
-var User = require('../models/user');
+const express = require('express');
+const router = express.Router();
+const User = require('../models/user');
 
-router.get('/', function (req, res, next) {
-	return res.render('index.ejs');
-});
+// Registration Endpoint
+router.post('/register', async (req, res) => {
+	const { email, username, password, passwordConf } = req.body;
 
+	if (!email || !username || !password || !passwordConf) {
+		return res.status(400).json({ error: "All fields are required." });
+	}
+	if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+		return res.status(400).json({ error: "Invalid email format." });
+	}
+	if (username.length < 3) {
+		return res.status(400).json({ error: "Username must be at least 3 characters." });
+	}
+	if (password.length < 8) {
+		return res.status(400).json({ error: "Password must be at least 8 characters." });
+	}
+	if (password !== passwordConf) {
+		return res.status(400).json({ error: "Passwords do not match." });
+	}
 
-router.post('/', function(req, res, next) {
-	console.log(req.body);
-	var personInfo = req.body;
-
-
-	if(!personInfo.email || !personInfo.username || !personInfo.password || !personInfo.passwordConf){
-		res.send();
-	} else {
-		if (personInfo.password == personInfo.passwordConf) {
-
-			User.findOne({email:personInfo.email},function(err,data){
-				if(!data){
-					var c;
-					User.findOne({},function(err,data){
-
-						if (data) {
-							console.log("if");
-							c = data.unique_id + 1;
-						}else{
-							c=1;
-						}
-
-						var newPerson = new User({
-							unique_id:c,
-							email:personInfo.email,
-							username: personInfo.username,
-							password: personInfo.password,
-							passwordConf: personInfo.passwordConf
-						});
-
-						newPerson.save(function(err, Person){
-							if(err)
-								console.log(err);
-							else
-								console.log('Success');
-						});
-
-					}).sort({_id: -1}).limit(1);
-					res.send({"Success":"You are regestered,You can login now."});
-				}else{
-					res.send({"Success":"Email is already used."});
-				}
-
-			});
-		}else{
-			res.send({"Success":"password is not matched"});
+	try {
+		const existingUser = await User.findOne({ email });
+		if (existingUser) {
+			return res.status(400).json({ error: "Email is already in use." });
 		}
+
+		const lastUser = await User.findOne().sort({ _id: -1 });
+		const uniqueId = lastUser ? lastUser.unique_id + 1 : 1;
+
+		const newUser = new User({
+			unique_id: uniqueId,
+			email,
+			username,
+			password,
+			passwordConf
+		});
+
+		await newUser.save();
+		res.status(201).json({ success: "You are registered, you can now login." });
+	} catch (error) {
+		res.status(500).json({ error: "Server error during registration." });
 	}
 });
 
-router.get('/login', function (req, res, next) {
-	return res.render('login.ejs');
-});
+// Login Endpoint
+router.post('/login', async (req, res) => {
+	const { email, password } = req.body;
 
-router.post('/login', function (req, res, next) {
-	//console.log(req.body);
-	User.findOne({email:req.body.email},function(err,data){
-		if(data){
-			
-			if(data.password==req.body.password){
-				//console.log("Done Login");
-				req.session.userId = data.unique_id;
-				//console.log(req.session.userId);
-				res.send({"Success":"Success!"});
-				
-			}else{
-				res.send({"Success":"Wrong password!"});
-			}
-		}else{
-			res.send({"Success":"This Email Is not regestered!"});
+	if (!email || !password) {
+		return res.status(400).json({ error: "All fields are required." });
+	}
+
+	try {
+		const user = await User.findOne({ email });
+		if (!user || user.password !== password) {
+			return res.status(400).json({ error: "Incorrect email or password." });
 		}
-	});
+
+		req.session.userId = user.unique_id;
+
+    // Send user ID along with success message
+    res.json({ success: "Login successful!", userId: user.unique_id });
+	} catch (error) {
+		res.status(500).json({ error: "Server error during login." });
+	}
 });
 
-router.get('/profile', function (req, res, next) {
-	console.log("profile");
-	User.findOne({unique_id:req.session.userId},function(err,data){
-		console.log("data");
-		console.log(data);
-		if(!data){
-			res.redirect('/');
-		}else{
-			//console.log("found");
-			return res.render('data.ejs', {"name":data.username,"email":data.email});
-		}
-	});
-});
-
-router.get('/logout', function (req, res, next) {
-	console.log("logout")
+router.get('/profile', async (req, res) => {
+	try {
+	  const userId = req.headers.userid; // Retrieve userId from request headers
+	  if (!userId) {
+		return res.status(401).json({ error: "Unauthorized access." });
+	  }
+  
+	  const user = await User.findOne({ unique_id: userId });
+	  if (!user) {
+		return res.status(401).json({ error: "User not found." });
+	  }
+  
+	  res.json({ username: user.username, email: user.email });
+	} catch (error) {
+	  res.status(500).json({ error: "Server error fetching profile." });
+	}
+  });
+  
+  router.post('/logout', (req, res) => {
 	if (req.session) {
-    // delete session object
-    req.session.destroy(function (err) {
-    	if (err) {
-    		return next(err);
-    	} else {
-    		return res.redirect('/');
-    	}
-    });
-}
-});
+	  req.session.destroy(err => {
+		if (err) return res.status(500).json({ error: "Logout failed." });
+		res.json({ success: "Logout successful." });
+	  });
+	} else {
+	  res.status(200).json({ success: "No active session." });
+	}
+  });
+  
 
-router.get('/forgetpass', function (req, res, next) {
-	res.render("forget.ejs");
-});
+// Password Reset Endpoints
+router.post('/forgetpass', async (req, res) => {
+	const { email, password, passwordConf } = req.body;
 
-router.post('/forgetpass', function (req, res, next) {
-	//console.log('req.body');
-	//console.log(req.body);
-	User.findOne({email:req.body.email},function(err,data){
-		console.log(data);
-		if(!data){
-			res.send({"Success":"This Email Is not regestered!"});
-		}else{
-			// res.send({"Success":"Success!"});
-			if (req.body.password==req.body.passwordConf) {
-			data.password=req.body.password;
-			data.passwordConf=req.body.passwordConf;
+	if (!email || !password || !passwordConf) {
+		return res.status(400).json({ error: "All fields are required." });
+	}
+	if (password !== passwordConf) {
+		return res.status(400).json({ error: "Passwords do not match." });
+	}
 
-			data.save(function(err, Person){
-				if(err)
-					console.log(err);
-				else
-					console.log('Success');
-					res.send({"Success":"Password changed!"});
-			});
-		}else{
-			res.send({"Success":"Password does not matched! Both Password should be same."});
+	try {
+		const user = await User.findOne({ email });
+		if (!user) {
+			return res.status(400).json({ error: "This email is not registered." });
 		}
-		}
-	});
-	
+
+		user.password = password;
+		user.passwordConf = passwordConf;
+		await user.save();
+
+		res.json({ success: "Password has been reset." });
+	} catch (error) {
+		res.status(500).json({ error: "Server error during password reset." });
+	}
 });
 
 module.exports = router;

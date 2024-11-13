@@ -8,9 +8,9 @@ var mongoose = require('mongoose');
 var session = require('express-session');
 var MongoStore = require('connect-mongo')(session);
 
-mongoose.connect('mongodb+srv://<DB_USER_NAME>:<DB_PASSWORD>@cluster0-vatbg.mongodb.net/registrationFormHeruko?retryWrites=true&w=majority', {
+mongoose.connect(`mongodb+srv://${process.env.MONGO_USERNAME}:${process.env.MONGO_PASSWORD}@cluster0.dh7e9.mongodb.net/`, {
   useNewUrlParser: true,
-  useUnifiedTopology: true
+  useUnifiedTopology: true,
 }, (err) => {
   if (!err) {
     console.log('MongoDB Connection Succeeded.');
@@ -23,6 +23,8 @@ var db = mongoose.connection;
 db.on('error', console.error.bind(console, 'connection error:'));
 db.once('open', function () {
 });
+const cors = require('cors');
+app.use(cors({ origin: 'http://localhost:3000' }));
 
 app.use(session({
   secret: 'work hard',
@@ -59,7 +61,7 @@ app.use(function (err, req, res, next) {
 });
 
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, function () {
   console.log('Server is started on http://127.0.0.1:'+PORT);
 });
